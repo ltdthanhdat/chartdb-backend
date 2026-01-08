@@ -343,7 +343,7 @@ pub async fn pull_diagram(
     State(pool): State<PgPool>,
     Path(id): Path<String>,
 ) -> Result<Json<Diagram>, (StatusCode, Json<ErrorResponse>)> {
-    // Get diagram
+    // Get diagram (ID is now TEXT, not UUID)
     let diagram_row = sqlx::query("SELECT * FROM diagrams WHERE id = $1")
         .bind(&id)
         .fetch_optional(&pool)
@@ -577,6 +577,42 @@ pub async fn pull_diagram(
     diagram.notes = Some(notes);
 
     Ok(Json(diagram))
+}
+
+pub async fn list_diagrams(
+    State(pool): State<PgPool>,
+) -> Result<Json<Vec<Diagram>>, (StatusCode, Json<ErrorResponse>)> {
+    let diagram_rows = sqlx::query("SELECT * FROM diagrams ORDER BY updated_at DESC")
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: format!("Database error: {}", e),
+                }),
+            )
+        })?;
+
+    let diagrams: Vec<Diagram> = diagram_rows
+        .into_iter()
+        .map(|row| Diagram {
+            id: row.get("id"),
+            name: row.get("name"),
+            database_type: row.get("database_type"),
+            database_edition: row.get("database_edition"),
+            created_at: row.get("created_at"),
+            updated_at: row.get("updated_at"),
+            tables: None, // Don't include tables in list view
+            relationships: None,
+            dependencies: None,
+            areas: None,
+            custom_types: None,
+            notes: None,
+        })
+        .collect();
+
+    Ok(Json(diagrams))
 }
 
 pub async fn health() -> &'static str {
